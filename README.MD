@@ -22,4 +22,4 @@ Contributions are welcome! Feel free to open issues or pull requests to improve 
 
 # License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/damirtag/tiktok-module) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/damirtag/tiktok-module/blob/main/LICENSE.MD) file for details.
