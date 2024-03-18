@@ -16,6 +16,13 @@ Perfect for using in telegram bots/userbots
 -   Python 3.6+
 -   aiohttp library
 
+## Installation
+You can install this project directly from GitHub using pip. Run the following command in your terminal:
+
+```bash
+pip install git+https://github.com/damirTAG/TikTok-Module.git
+```
+
 ## [Usage](https://github.com/damirtag/tiktok-module/blob/main/Example.py)
 ```py
 import asyncio
