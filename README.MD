@@ -7,8 +7,9 @@ Perfect for using in telegram bots/userbots
 
 ## Features
 
--   Fetch TikTok video data including video details, user information, and music details.
--   Download TikTok videos directly from the API.
+-   Fully async
+-   Fetch TikTok video data including video/image details, user information, and sound details.
+-   Download TikTok videos/images directly from the API.
 -   Extract audio from TikTok videos and save them as MP3 files.
 
 ## Requirements
@@ -17,6 +18,7 @@ Perfect for using in telegram bots/userbots
 -   aiohttp library
 
 ## Installation
+
 You can install this project directly from GitHub using pip. Run the following command in your terminal:
 
 ```bash
@@ -24,6 +26,9 @@ pip install git+https://github.com/damirTAG/TikTok-Module.git
 ```
 
 ## [Usage](https://github.com/damirtag/tiktok-module/blob/main/Example.py)
+
+### Download Images
+
 ```py
 import asyncio
 from TikTok import TikTok
@@ -36,7 +41,43 @@ async def main(link: str) -> dict:
         await tt_module.initialize()
 
         await tt_module.download_photos()
-        print('Images downloaded successfully')
+    except Exception as e:
+        print(f'error: {e}')
+
+asyncio.run(main(link=input("TikTok link: ")))
+```
+
+### Download Video
+
+```py
+import asyncio
+from TikTok import TikTok
+
+async def main(link: str) -> dict:
+    try:
+        tt_module = TikTok(link)
+        await tt_module.initialize()
+
+        await tt_module.download_video()
+    except Exception as e:
+        print(f'error: {e}')
+
+asyncio.run(main(link=input("TikTok link: ")))
+```
+
+### Get raw JSON data
+
+```py
+import asyncio
+from TikTok import TikTok
+
+async def main(link: str) -> dict:
+    try:
+        tt_module = TikTok(link)
+        await tt_module.initialize()
+
+        data = await tt_module.fetch(link)
+        print(data)
     except Exception as e:
         print(f'error: {e}')
 
