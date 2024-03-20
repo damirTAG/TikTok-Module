@@ -86,7 +86,7 @@ class TikTok:
         """
         try:
             aweme_id = await self.get_tiktok_video_id(link)
-            print(aweme_id)
+            print(f'TikTok video id: {aweme_id}')
             url = f'https://api22-normal-c-useast2a.tiktokv.com/aweme/v1/feed/?aweme_id={aweme_id}'
                 # print(url)
             async with aiohttp.ClientSession() as session:
@@ -127,7 +127,7 @@ class TikTok:
         Args:
             download_dir (:obj:`str`): Where to store downloaded images (if None, then stores in video id named folder)
         """
-        if download_dir is None:
+        if download_dir == None:
             self.download_dir = self.result['aweme_id']
         else:
             self.download_dir = download_dir
@@ -161,6 +161,10 @@ class TikTok:
         Returns: 
             file name.
         """
+        if audio_filename == None:
+            self.audio_filename = f"{self.result['music']['title']}.mp3"
+        else:
+            self.audio_filename = f'{audio_filename}.mp3'
 
         audio_url = self.result['music']['play_url']['url_list']
         cleaned_string = audio_url[0]
@@ -224,8 +228,8 @@ class TikTok:
             video_filename(:obj:`str`): Name of the tiktok video file (if None, then stores in video id named file)
         """
         video_url = self.result['video']['play_addr']['url_list'][0]
-        if video_filename is None:
-            self.video_filename = f"{self.result['aweme_id']}.mp4"
+        if video_filename == None:
+            self.video_filename = f"@damirtag sigma {self.result['aweme_id']}.mp4"
         else:
             self.video_filename = f'{video_filename}.mp4'
 
@@ -244,10 +248,10 @@ class TikTok:
 
     def __del_photos__(self):
         shutil.rmtree(self.download_dir)
-        print("Photos | %s has been removed successfully" % self.download_dir)
+        print("[TikTok:photos] | %s has been removed successfully" % self.download_dir)
     def __del_video__(self):
-        os.remove(self.local_filename)
-        print("Video | %s has been removed successfully" % self.local_filename)
+        os.remove(self.video_filename)
+        print("[TikTok:video] | %s has been removed successfully" % self.local_filename)
     def __del_sound__(self):
         os.remove(self.audio_filename)
-        print("Sound | %s has been removed successfully" % self.audio_filename)
+        print("[TikTok:sound] | %s has been removed successfully" % self.audio_filename)
