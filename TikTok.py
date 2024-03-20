@@ -1,5 +1,9 @@
-import aiohttp, aiofiles, re, asyncio, os, shutil
+import aiohttp, aiofiles, asyncio
+import re, os, shutil
+
+from time import sleep
 from typing import Union, Optional
+from tqdm import tqdm
 import platform
 
 class TikTok:
@@ -101,7 +105,13 @@ class TikTok:
         except Exception as e:
             raise e
 
-    async def download_image(self, session, image_url, i, download_dir, media_dict):
+    async def print_progress(self, max_val, done):
+        undone = max_val - done
+        proc = (100 * done) // max_val
+        progress_bar = f"[TikTok:download] Progress: [{'#' * done + '_' * undone}] ({proc}%)"
+        print(f"\r{progress_bar}\r")
+
+    async def download_image(self, session, image_url, i, download_dir, media_dict, max_val):
         async with session.get(image_url) as response:
             if response.status == 200:
                 image_data = await response.read()
@@ -114,11 +124,12 @@ class TikTok:
                 with open(file_path, 'wb') as file:
                     file.write(image_data)
 
-                print(f"Image {i + 1} downloaded and saved as '{file_path}'")
+                await self.print_progress(max_val, i + 1)
                 media_dict[i] = file_path
             else:
                 print(
                     f"Failed to download image {i + 1}. Status code: {response.status}")
+            
 
     async def download_photos(self, download_dir: Optional[str] = None):
         """
@@ -138,12 +149,15 @@ class TikTok:
             display_image = image['display_image']['url_list'][0]
             if display_image:
                 images.append(display_image)
+
+        max_val = len(images)        
         media_dict = {}
+
         async with aiohttp.ClientSession() as session:
             tasks = []
             for i, image_url in enumerate(images):
                 tasks.append(asyncio.ensure_future(self.download_image(
-                    session, image_url, i, download_dir, media_dict)))
+                    session, image_url, i, self.download_dir, media_dict, max_val)))
 
             await asyncio.gather(*tasks)
 
@@ -228,22 +242,25 @@ class TikTok:
             video_filename(:obj:`str`): Name of the tiktok video file (if None, then stores in video id named file)
         """
         video_url = self.result['video']['play_addr']['url_list'][0]
-        if video_filename == None:
-            self.video_filename = f"@damirtag sigma {self.result['aweme_id']}.mp4"
+        if video_filename is None:
+            self.video_filename = f"{self.result['aweme_id']}.mp4"
         else:
             self.video_filename = f'{video_filename}.mp4'
 
         async with aiohttp.ClientSession() as session:
             async with session.get(video_url) as response:
                 if response.status == 200:
-                    with open(self.video_filename, 'wb') as f:
+                    total_size = int(response.headers.get('content-length', 0))
+                    with open(self.video_filename, 'wb') as f, tqdm(
+                            total=total_size, unit='B', unit_scale=True, desc=self.video_filename) as pbar:
                         async for chunk in response.content.iter_any():
                             f.write(chunk)
+                            pbar.update(len(chunk))
 
                     print(f"Video downloaded and saved as {self.video_filename}")
                     return self.video_filename
                 else:
-                    return f"Failed to download the video. HTTP status: {response.status}"          
+                    return f"Failed to download the video. HTTP status: {response.status}"         
     
 
     def __del_photos__(self):
@@ -251,7 +268,7 @@ class TikTok:
         print("[TikTok:photos] | %s has been removed successfully" % self.download_dir)
     def __del_video__(self):
         os.remove(self.video_filename)
-        print("[TikTok:video] | %s has been removed successfully" % self.local_filename)
+        print("[TikTok:video] | %s has been removed successfully" % self.video_filename)
     def __del_sound__(self):
         os.remove(self.audio_filename)
         print("[TikTok:sound] | %s has been removed successfully" % self.audio_filename)
