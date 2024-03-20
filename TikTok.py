@@ -105,13 +105,9 @@ class TikTok:
         except Exception as e:
             raise e
 
-    async def print_progress(self, max_val, done):
-        undone = max_val - done
-        proc = (100 * done) // max_val
-        progress_bar = f"[TikTok:download] Progress: [{'#' * done + '_' * undone}] ({proc}%)"
-        print(f"\r{progress_bar}\r")
+        
 
-    async def download_image(self, session, image_url, i, download_dir, media_dict, max_val):
+    async def download_image(self, session, image_url, i, download_dir, media_dict):
         async with session.get(image_url) as response:
             if response.status == 200:
                 image_data = await response.read()
@@ -124,11 +120,10 @@ class TikTok:
                 with open(file_path, 'wb') as file:
                     file.write(image_data)
 
-                await self.print_progress(max_val, i + 1)
                 media_dict[i] = file_path
             else:
                 print(
-                    f"Failed to download image {i + 1}. Status code: {response.status}")
+                    f"[TikTok:photos] | Failed to download image {i + 1}. Status code: {response.status}")
             
 
     async def download_photos(self, download_dir: Optional[str] = None):
@@ -157,12 +152,15 @@ class TikTok:
             tasks = []
             for i, image_url in enumerate(images):
                 tasks.append(asyncio.ensure_future(self.download_image(
-                    session, image_url, i, self.download_dir, media_dict, max_val)))
+                    session, image_url, i, self.download_dir, media_dict)))
+                print("[TikTok:download] Progress:",i,sep='',end="\r",flush=True)
 
             await asyncio.gather(*tasks)
 
         sorted_media = {k: v for k, v in sorted(
             media_dict.items(), key=lambda item: item[0])}
+        
+        print(f'[TikTok:photos] | Total: {max_val} images saved in {media_dict} and sorted successfully')
         return list(sorted_media.values())
 
     async def download_sound(self, audio_filename: Optional[str] = None):
@@ -191,7 +189,7 @@ class TikTok:
 
                     with open(audio_filename, "wb") as audio_file:
                         audio_file.write(audio_data)
-                        print("Sound downloaded successfully.")
+                        print("[TikTok:sound] | downloaded successfully.")
                     return audio_filename
                 else:
                     print(f"Error: {audio_response.status}")
@@ -243,7 +241,7 @@ class TikTok:
         """
         video_url = self.result['video']['play_addr']['url_list'][0]
         if video_filename is None:
-            self.video_filename = f"{self.result['aweme_id']}.mp4"
+            self.video_filename = f"@damirtag sigma {self.result['aweme_id']}.mp4"
         else:
             self.video_filename = f'{video_filename}.mp4'
 
@@ -257,10 +255,10 @@ class TikTok:
                             f.write(chunk)
                             pbar.update(len(chunk))
 
-                    print(f"Video downloaded and saved as {self.video_filename}")
+                    print(f"[TikTok:video] | Downloaded and saved as {self.video_filename}")
                     return self.video_filename
                 else:
-                    return f"Failed to download the video. HTTP status: {response.status}"         
+                    return f"[TikTok:video] | Failed to download the video. HTTP status: {response.status}"         
     
 
     def __del_photos__(self):
