@@ -14,8 +14,7 @@ Perfect for using in telegram bots/userbots
 
 ## Requirements
 
--   Python 3.6+
--   aiohttp library
+See <a href='https://github.com/damirTAG/TikTok-Module/blob/main/requirements.txt'>requirements.txt</a>
 
 ## Installation
 
