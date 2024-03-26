@@ -1,18 +1,22 @@
-import aiohttp, aiofiles, asyncio
+import aiohttp, asyncio
 import re, os, shutil
-
-from time import sleep
-from typing import Union, Optional
-from tqdm import tqdm
 import platform
 
+from aiohttp import ClientSession
+
+from urllib.parse import urljoin
+from typing import Union, Optional
+from tqdm import tqdm
+
+
 class TikTok:
-    def __init__(self):
+    def __init__(self, host: Optional[str] = None):
         self.headers = {
-            'Accept-language': 'en',
             'User-Agent': 'Mozilla/5.0 (iPad; U; CPU OS 3_2 like Mac OS X; en-us) AppleWebKit/531.21.10 (KHTML, like Gecko) '
                         'Version/4.0.4 Mobile/7B334b Safari/531.21.102011-10-16 20:23:10'
         }
+        self.host = "https://api22-normal-c-alisg.tiktokv.com/" if host is None else host
+        self._session = ClientSession()
 
         self.link = None
         self.result = None
@@ -33,6 +37,14 @@ class TikTok:
         self.result = await self.fetch(self.link)
 
         
+    async def _makerequest(self, endpoint: str, params: dict) -> dict:
+        async with self._session.request(
+            'GET',
+            urljoin(self.host, endpoint),
+            params=params,
+            headers=self.headers
+        ) as response:
+            return await response.json() 
 
     @staticmethod
     def get_url(text: str) -> Union[str, None]:
@@ -91,17 +103,22 @@ class TikTok:
         try:
             aweme_id = await self.get_tiktok_video_id(link)
             print(f'TikTok video id: {aweme_id}')
-            url = f'https://api22-normal-c-useast2a.tiktokv.com/aweme/v1/feed/?aweme_id={aweme_id}'
-                # print(url)
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        json = await response.json()
-                        data = json['aweme_list'][0]
+            # Params provided by https://github.com/sheldygg | Thanks a lot!
+            params = {
+                "iid": "7318518857994389254",
+                "device_id": "7318517321748022790",
+                "channel": "googleplay",
+                "app_name": "musical_ly",
+                "version_code": "300904",
+                "device_platform": "android",
+                "device_type": "ASUS_Z01QD",
+                "os_version": "9",
+                "aweme_id": aweme_id
+            }
+            data = (await self._makerequest("aweme/v1/feed/", params=params))
+            raw_data = data["aweme_list"][0] 
 
-                        return(data)
-                    else:
-                        raise Exception('Failed to fetch')
+            return raw_data
         except Exception as e:
             raise e
 
@@ -270,3 +287,56 @@ class TikTok:
     def __del_sound__(self):
         os.remove(self.audio_filename)
         print("[TikTok:sound] | %s has been removed successfully" % self.audio_filename)
+
+
+if __name__ == '__main__':
+    async def main():
+        tiktok = TikTok()
+        await tiktok.init('https://www.tiktok.com/@iar1111k_c/video/7345466913461423366')
+        
+        # Fetch and print the raw data
+        print("Raw TikTok Data:")
+        print(tiktok.result)
+        
+        # Download photos
+        try:
+            photos = await tiktok.download_photos()
+            print("\nDownloaded Photos:")
+            print(photos)
+        except KeyError:
+            print('No photos found, skipping')
+        
+        # Download sound
+        sound = await tiktok.download_sound()
+        print("\nDownloaded Sound:")
+        print(sound)
+        
+        # Download video
+        try:
+            video = await tiktok.download_video()
+            print("\nDownloaded Video:")
+            print(video)
+        except KeyError:
+            print('No videos found, skipping')
+        
+        # Construct captions
+        caption_posts = tiktok.construct_caption_posts()
+        print("\nConstructed Caption for Posts:")
+        print(caption_posts)
+        
+        caption_audio = tiktok.construct_caption_audio()
+        print("\nConstructed Caption for Audio:")
+        print(caption_audio)
+        
+        # Clean up
+        try:
+            tiktok.__del_photos__()
+        except FileNotFoundError:
+            print('No photos found, skipping')
+        try:
+            tiktok.__del_video__()
+        except FileNotFoundError:
+            print('No videos found, skipping')
+        tiktok.__del_sound__()
+
+    asyncio.run(main())
