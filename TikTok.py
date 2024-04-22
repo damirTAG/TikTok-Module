@@ -272,7 +272,6 @@ class TikTok:
                             pbar.update(len(chunk))
 
                     print(f"[TikTok:video] | Downloaded and saved as {self.video_filename}")
-                    session.close()
                     return self.video_filename
                 else:
                     
