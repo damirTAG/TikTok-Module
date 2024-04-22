@@ -16,7 +16,6 @@ class TikTok:
                         'Version/4.0.4 Mobile/7B334b Safari/531.21.102011-10-16 20:23:10'
         }
         self.host = "https://api22-normal-c-alisg.tiktokv.com/" if host is None else host
-        self._session = ClientSession()
 
         self.link = None
         self.result = None
@@ -38,7 +37,7 @@ class TikTok:
 
         
     async def _makerequest(self, endpoint: str, params: dict) -> dict:
-        async with self._session.request(
+        async with aiohttp.ClientSession().request(
             'GET',
             urljoin(self.host, endpoint),
             params=params,
@@ -273,10 +272,12 @@ class TikTok:
                             pbar.update(len(chunk))
 
                     print(f"[TikTok:video] | Downloaded and saved as {self.video_filename}")
+                    session.close()
                     return self.video_filename
                 else:
+                    
                     return f"[TikTok:video] | Failed to download the video. HTTP status: {response.status}"         
-    
+            
 
     def __del_photos__(self):
         shutil.rmtree(self.download_dir)
