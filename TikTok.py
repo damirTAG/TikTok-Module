@@ -64,8 +64,8 @@ class TikTok:
         url = self.get_url(url)
 
         if '@' in url:
-                print("this link is original: {}".format(url))
-                return url
+            print("this link is original: {}".format(url))
+            return url
         else:
             print('converting tiktok link...')
             try:
@@ -75,7 +75,7 @@ class TikTok:
                                 url = response.headers['Location'].split('?')[0] if '?' in response.headers[
                                     'Location'] else \
                                     response.headers['Location']
-                                print('obtaining the original link successfully, the original link is: {}'.format(url))
+                                print('obtaining the original link successfully: {}'.format(url))
                                 return url
             except Exception as e:
                     print('could not get original link!')

@@ -11,6 +11,7 @@ Perfect for using in telegram bots/userbots
 -   Fetch TikTok video data including video/image details, user information, and sound details.
 -   Download TikTok videos/images directly from the API.
 -   Extract audio from TikTok videos and save them as MP3 files.
+-   Search for videos by keywords and search for hashtags
 
 ## Requirements
 
@@ -36,10 +37,10 @@ from TikTok import TikTok
 # Download Images from link
 async def main(link: str) -> dict:
     try:
-        tt_module = TikTok()
-        await tt_module.init(link)
+        tt = TikTok()
+        await tt.init(link)
 
-        await tt_module.download_photos('TikTok post image')
+        await tt.download_photos('TikTok post image')
     except Exception as e:
         print(f'error: {e}')
 
@@ -54,10 +55,12 @@ from TikTok import TikTok
 
 async def main(link: str) -> dict:
     try:
-        tt_module = TikTok()
-        await tt_module.init(link)
+        tt = TikTok()
+        await tt.init(link)
 
-        await tt_module.download_video('my installed tiktok video')
+        await tt.download_video('my installed tiktok video')
+        # Download in HD
+        await tt.download_video('my installed tiktok video in HD', hd=True)
     except Exception as e:
         print(f'error: {e}')
 
@@ -72,15 +75,38 @@ from TikTok import TikTok
 
 async def main(link: str) -> dict:
     try:
-        tt_module = TikTok()
-        await tt_module.init(link)
+        tt = TikTok()
+        await tt.init(link)
 
-        data = await tt_module.fetch(link)
+        data = await tt.fetch(link)
         print(data)
     except Exception as e:
         print(f'error: {e}')
 
 asyncio.run(main(link=input("TikTok link: ")))
+```
+
+### Search method
+
+```py
+import asyncio
+from TikTok import TikTok
+
+async def main():
+    try:
+        tt = TikTok()
+
+        by_keyword = await tt.search('keyword', 'bleach', 3)
+        print('Data by searching video (keyword):\n')
+        print(by_keyword)
+
+        by_hashtag = await tt.search('hashtag', 'jojo')
+        print('Data searching for hashtags (challenges):\n')
+        print(by_hashtag)
+    except Exception as e:
+        print(f'error: {e}')
+
+asyncio.run(main())
 ```
 
 ## Contributing
