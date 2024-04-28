@@ -16,7 +16,8 @@ class TikTok:
                         'Version/4.0.4 Mobile/7B334b Safari/531.21.102011-10-16 20:23:10'
         }
         self.host = "https://www.tikwm.com/" if host is None else host # "https://api22-normal-c-alisg.tiktokv.com/"
-        
+        self.session = aiohttp.ClientSession()
+
         self.data = "api"
         self.search_videos_keyword = "api/feed/search"
         self.search_videos_hashtag = "api/challenge/search"
@@ -27,6 +28,9 @@ class TikTok:
         if platform.system() == 'Windows':
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+    async def close_session(self):
+        await self.session.close()
+
     async def init(self, link: Union[str] = None):
         """
         Initialize tiktok module client
@@ -36,12 +40,15 @@ class TikTok:
         Args:
             link (:obj:`str`): Link provided by user
         """
-        self.link = link
-        self.result = await self.fetch(self.link)
-
+        try:
+            self.link = link
+            self.result = await self.fetch(self.link)
+        except Exception as e:
+            print(f'Error when tried to init: {e}')
         
+    
     async def _makerequest(self, endpoint: str, params: dict) -> dict:
-        async with aiohttp.ClientSession().request(
+        async with self.session.request(
             'GET',
             urljoin(self.host, endpoint),
             params=params,
@@ -64,28 +71,23 @@ class TikTok:
         url = self.get_url(url)
 
         if '@' in url:
-            print("this link is original: {}".format(url))
-            return url
+                print("this link is original: {}".format(url))
+                return url
         else:
             print('converting tiktok link...')
             try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(url, headers=self.headers, allow_redirects=False) as response:
-                            if response.status == 301:
-                                url = response.headers['Location'].split('?')[0] if '?' in response.headers[
-                                    'Location'] else \
-                                    response.headers['Location']
-                                print('obtaining the original link successfully: {}'.format(url))
-                                return url
+                async with self.session.get(url, headers=self.headers, allow_redirects=False) as response:
+                    if response.status == 301:
+                        url = response.headers['Location'].split('?')[0] if '?' in response.headers['Location'] else \
+                            response.headers['Location']
+                        print('obtaining the original link successfully, the original link is: {}'.format(url))
+                        return url
             except Exception as e:
-                    print('could not get original link!')
-                    print(e)
-                    return None
+                print('could not get original link!')
+                print(e)
+                return None
 
     async def get_tiktok_video_id(self, original_url: str) -> Union[str, None]:
-        """
-        Returns: tiktok video id
-        """
         try:
             original_url = await self.convert_share_urls(original_url)
 
@@ -100,34 +102,18 @@ class TikTok:
             print('Error getting TikTok video ID:', e)
             return None
 
-
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     async def fetch(self, link: str) -> Union[str, None]:
-        """
-        Returns: RAW JSON TikTok API data
-        """
         try:
             aweme_id = await self.get_tiktok_video_id(link)
             print(f'TikTok video id: {aweme_id}')
-            # Params provided by https://github.com/sheldygg
-            # params = {
-            #     "iid": "7318518857994389254",
-            #     "device_id": "7318517321748022790",
-            #     "channel": "googleplay",
-            #     "app_name": "musical_ly",
-            #     "version_code": "300904",
-            #     "device_platform": "android",
-            #     "device_type": "ASUS_Z01QD",
-            #     "os_version": "9",
-            #     "aweme_id": aweme_id
-            # }
+            
             params = {
                 "url": link,
                 "hd": 1
             }
             data = (await self._makerequest(self.data, params=params))
             return data["data"]
-            # raw_data = data["aweme_list"][0]
         except Exception as e:
             raise e
 
@@ -172,8 +158,8 @@ class TikTok:
             return data["data"]["challenge_list"]
 
 
-    async def process_images(self, session, image_url, i, download_dir, media_dict):
-        async with session.get(image_url) as response:
+    async def process_images(self, image_url, i, download_dir, media_dict):
+        async with self.session.get(image_url) as response:
             if response.status == 200:
                 image_data = await response.read()
 
@@ -208,12 +194,10 @@ class TikTok:
         max_val = len(images)        
         media_dict = {}
 
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for i, image_url in enumerate(images):
-                tasks.append(asyncio.ensure_future(self.process_images(
-                    session, image_url, i, self.download_dir, media_dict)))
-                print("[TikTok:download] Progress:",i,sep='',end="\r",flush=True)
+        tasks = []
+        for i, image_url in enumerate(images):
+            tasks.append(asyncio.ensure_future(self.process_images(image_url, i, self.download_dir, media_dict)))
+            print("[TikTok:download] Progress:",i,sep='',end="\r",flush=True)
 
             await asyncio.gather(*tasks)
 
@@ -240,18 +224,17 @@ class TikTok:
 
         audio_url = self.result['music_info']['play']
 
-        async with aiohttp.ClientSession() as audio_session:
-            async with audio_session.get(audio_url) as audio_response:
-                if audio_response.status == 200:
-                    audio_filename = self.audio_filename
-                    audio_data = await audio_response.read()
+        async with self.session.get(audio_url) as audio_response:
+            if audio_response.status == 200:
+                audio_filename = self.audio_filename
+                audio_data = await audio_response.read()
 
-                    with open(audio_filename, "wb") as audio_file:
-                        audio_file.write(audio_data)
-                        print("[TikTok:sound] | downloaded successfully.")
-                    return audio_filename
-                else:
-                    print(f"Error: {audio_response.status}")
+                with open(audio_filename, "wb") as audio_file:
+                    audio_file.write(audio_data)
+                    print("[TikTok:sound] | downloaded successfully.")
+                return audio_filename
+            else:
+                print(f"Error: {audio_response.status}")
 
     def construct_caption_posts(self):
         """
@@ -291,13 +274,13 @@ class TikTok:
 
         return f"{audio_caption}"
 
-    async def download_video(self, video_filename: Optional[str] = None, hd: Optional[bool] = True):
+    async def download_video(self, video_filename: Optional[str] = None, hd: Optional[bool] = False):
         """
         Async function to download tiktok video 
 
         Args:
             video_filename(:obj:`str`): Name of the tiktok video file (if None, then stores in video id named file)
-            hd(:obj:`bool`): if True downloads by hd format else not, by default set to True
+            hd(:obj:`bool`): if True downloads by hd format else not, by default set to False
         """
         if hd is True:
             video_url = self.result['hdplay']
@@ -308,20 +291,19 @@ class TikTok:
         else:
             self.video_filename = f'{video_filename}.mp4'
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(video_url) as response:
-                if response.status == 200:
-                    total_size = int(response.headers.get('content-length', 0))
-                    with open(self.video_filename, 'wb') as f, tqdm(
-                            total=total_size, unit='B', unit_scale=True, desc=self.video_filename) as pbar:
-                        async for chunk in response.content.iter_any():
-                            f.write(chunk)
-                            pbar.update(len(chunk))
+        async with self.session.get(video_url) as response:
+            if response.status == 200:
+                total_size = int(response.headers.get('content-length', 0))
+                with open(self.video_filename, 'wb') as f, tqdm(
+                        total=total_size, unit='B', unit_scale=True, desc=self.video_filename) as pbar:
+                    async for chunk in response.content.iter_any():
+                        f.write(chunk)
+                        pbar.update(len(chunk))
 
                     print(f"[TikTok:video] | Downloaded and saved as {self.video_filename}")
                     return self.video_filename
-                else:
-                    return f"[TikTok:video] | Failed to download the video. HTTP status: {response.status}"   
+            else:
+                return f"[TikTok:video] | Failed to download the video. HTTP status: {response.status}"   
             
 
     def __del_photos__(self):
@@ -334,55 +316,55 @@ class TikTok:
         os.remove(self.audio_filename)
         print("[TikTok:sound] | %s has been removed successfully" % self.audio_filename)
 
+
 # DEBUG/TESTING
 if __name__ == '__main__':
     async def main():
-        tiktok = TikTok()
+            tiktok = TikTok()
 
-        by_keyword = await tiktok.search('keyword', 'bleach', 3)
-        print('Data by searching video (keyword):\n')
-        print(by_keyword)
+            by_keyword = await tiktok.search('keyword', 'bleach', 3)
+            print('Data by searching video (keyword):\n')
+            print(by_keyword)
 
-        by_hashtag = await tiktok.search('hashtag', 'jojo')
-        print('Data searching for hashtags (challenges):\n')
-        print(by_hashtag)
+            by_hashtag = await tiktok.search('hashtag', 'jojo')
+            print('Data searching for hashtags (challenges):\n')
+            print(by_hashtag)
 
-        await tiktok.init('https://www.tiktok.com/@iar1111k_c/video/7345466913461423366')
-        
-        # Fetch and print the raw data
-        print("Raw TikTok Data:")
-        print(tiktok.result)
-        
-        # Download photos
-        try:
-            photos = await tiktok.download_photos()
-            print("\nDownloaded Photos:")
-            print(photos)
-        except KeyError:
-            print('No photos found, skipping')
-        
-        # Download sound
-        sound = await tiktok.download_sound()
-        print("\nDownloaded Sound:")
-        print(sound)
-        
-        # Download video
-        try:
-            video = await tiktok.download_video()
-            print("\nDownloaded Video:")
-            print(video)
-        except KeyError:
-            print('No videos found, skipping')
-        
-        # Construct captions
-        caption_posts = tiktok.construct_caption_posts()
-        print("\nConstructed Caption for Posts:")
-        print(caption_posts)
-        
-        caption_audio = tiktok.construct_caption_audio()
-        print("\nConstructed Caption for Audio:")
-        print(caption_audio)
-        
+            await tiktok.init('https://www.tiktok.com/@p1lotless/video/7362861010325114118')
+            
+            # Fetch and print the raw data
+            print("Raw TikTok Data:")
+            print(tiktok.result)
+            
+            # Download photos
+            try:
+                photos = await tiktok.download_photos()
+                print("\nDownloaded Photos:")
+                print(photos)
+            except KeyError:
+                print('No photos found, skipping')
+            
+            # Download sound
+            sound = await tiktok.download_sound()
+            print("\nDownloaded Sound:")
+            print(sound)
+            
+            # Download video
+            try:
+                video = await tiktok.download_video()
+                print("\nDownloaded Video:")
+                print(video)
+            except KeyError:
+                print('No videos found, skipping')
+            
+            # Construct captions
+            caption_posts = tiktok.construct_caption_posts()
+            print("\nConstructed Caption for Posts:")
+            print(caption_posts)
+            
+            caption_audio = tiktok.construct_caption_audio()
+            print("\nConstructed Caption for Audio:")
+            print(caption_audio)
         # Clean up
         # try:
         #     tiktok.__del_photos__()
