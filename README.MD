@@ -5,9 +5,7 @@
 This is a simple Python module for interacting with the TikTok API. It provides functionality to fetch TikTok video data, download videos, and extract audio from videos.
 Perfect for using in telegram bots/userbots
 
-> [!IMPORTANT]
-> **If tikwm.com is down, use [this version](https://github.com/damirTAG/TikTok-Module/tree/425fe20a8d522cf2051c9976c3e7ff76bdab6b5f).**
-> **Remember that search is NOT provided in this tree.**
+> [!IMPORTANT] > **If tikwm.com is down, use [this version](https://github.com/damirTAG/TikTok-Module/tree/425fe20a8d522cf2051c9976c3e7ff76bdab6b5f).** > **Remember that search is NOT provided in this tree.**
 
 ## Features
 
@@ -29,89 +27,9 @@ You can install this project directly from GitHub using pip. Run the following c
 pip install git+https://github.com/damirTAG/TikTok-Module.git
 ```
 
-## [Usage](https://github.com/damirtag/tiktok-module/blob/main/Example.py)
+## How to use?
 
-### Download Images
-
-```py
-import asyncio
-from TikTok import TikTok
-
-
-# Download Images from link
-async def main(link: str) -> dict:
-    try:
-        tt = TikTok()
-        await tt.init(link)
-
-        await tt.download_photos('TikTok post image')
-    except Exception as e:
-        print(f'error: {e}')
-
-asyncio.run(main(link=input("TikTok link: ")))
-```
-
-### Download Video
-
-```py
-import asyncio
-from TikTok import TikTok
-
-async def main(link: str) -> dict:
-    try:
-        tt = TikTok()
-        await tt.init(link)
-
-        await tt.download_video('my installed tiktok video')
-        # Download in HD
-        await tt.download_video('my installed tiktok video in HD', hd=True)
-    except Exception as e:
-        print(f'error: {e}')
-
-asyncio.run(main(link=input("TikTok link: ")))
-```
-
-### Get raw JSON data
-
-```py
-import asyncio
-from TikTok import TikTok
-
-async def main(link: str) -> dict:
-    try:
-        tt = TikTok()
-        await tt.init(link)
-
-        data = await tt.fetch(link)
-        print(data)
-    except Exception as e:
-        print(f'error: {e}')
-
-asyncio.run(main(link=input("TikTok link: ")))
-```
-
-### Search method
-
-```py
-import asyncio
-from TikTok import TikTok
-
-async def main():
-    try:
-        tt = TikTok()
-
-        by_keyword = await tt.search('keyword', 'bleach', 3)
-        print('Data by searching video (keyword):\n')
-        print(by_keyword)
-
-        by_hashtag = await tt.search('hashtag', 'jojo')
-        print('Data searching for hashtags (challenges):\n')
-        print(by_hashtag)
-    except Exception as e:
-        print(f'error: {e}')
-
-asyncio.run(main())
-```
+[See the list of examples here](https://github.com/damirtag/tiktok-module/blob/main/Example.py)
 
 ## Contributing
 
