@@ -1,56 +1,50 @@
 import asyncio
-from TikTok import TikTok
+from TikTok import TikTok  # Assuming your TikTok class is implemented in 'TikTok.py' or you can name it as you want
 
+async def main():
+    # Initialize TikTok instance
+    tiktok = TikTok()
 
-# Doing stuff...
-async def main(link: str) -> dict:
+    # Example 1: Download video
     try:
-        tiktok = TikTok()
+        await tiktok.init('https://www.tiktok.com/@p1lotless/video/7382314053496098053')
+        video_filename = await tiktok.download(hd=True)
+        print(f"Downloaded video to: {video_filename}")
+    except Exception as e:
+        print(f"Error downloading video: {e}")
 
-        by_keyword = await tiktok.search('keyword', 'bleach', 3)
-        print('Data by searching video (keyword):\n')
-        print(by_keyword)
+    # Example 2: Download photos
+    try:
+        await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
+        photo_filenames = await tiktok.download('tiktok_images22')
+        print(f"Images downloaded to: {photo_filenames}")
+    except Exception as e:
+        print(f"Error downloading photos: {e}")
 
-        by_hashtag = await tiktok.search('hashtag', 'jojo')
-        print('Data searching for hashtags (challenges):\n')
-        print(by_hashtag)
+    # Example 3: Search videos by keyword
+    try:
+        keyword = 'funny'
+        videos = await tiktok.search(method="keyword", keyword=keyword, count=5)
+        print(f"Found {len(videos)} videos for keyword '{keyword}':")
+        for idx, video in enumerate(videos, start=1):
+            print(f"{idx}. {video['title']}\n{video['play']}")
+    except Exception as e:
+        print(f"Error searching videos: {e}")
 
-        await tiktok.init(link)
-            
-        # Fetch and print the raw data
-        print("Raw TikTok Data:")
-        print(tiktok.result)
-            
-        # Download photos
-        try:
-            photos = await tiktok.download_photos()
-            print("\nDownloaded Photos:")
-            print(photos)
-        except KeyError:
-            print('No photos found, skipping')
-            
-        # Download sound
-        sound = await tiktok.download_sound()
-        print("\nDownloaded Sound:")
-        print(sound)
-            
-        # Download video
-        try:
-            video = await tiktok.download_video()
-            print("\nDownloaded Video:")
-            print(video)
-        except KeyError:
-            print('No videos found, skipping')
-            
-        # Construct captions (WARNING!: in HTML markdown)
-        caption_posts = tiktok.construct_caption_posts()
-        print("\nConstructed Caption for Posts:")
-        print(caption_posts)
-            
-        caption_audio = tiktok.construct_caption_audio()
-        print("\nConstructed Caption for Audio:")
-        print(caption_audio)
-    finally:
-        await tiktok.close_session()
+    # Example 4: Search hashtags
+    try:
+        hashtag = 'dance'
+        challenges = await tiktok.search(method="hashtag", keyword=hashtag, count=5)
+        print(f"Found {len(challenges)} challenges for hashtag '{hashtag}':")
+        for idx, challenge in enumerate(challenges, start=1):
+            print(f"{idx}. #{challenge['cha_name']}\nUser count: {challenge['user_count']}\nView count: {challenge['view_count']}")
+    except Exception as e:
+        print(f"Error searching hashtags: {e}")
 
-asyncio.run(main(link=input("TikTok link: ")))
+    await tiktok.close_session()
+    print("Session closed.")
+    # Cleanup
+    del tiktok
+
+if __name__ == "__main__":
+    asyncio.run(main())

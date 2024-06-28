@@ -5,6 +5,10 @@
 This is a simple Python module for interacting with the TikTok API. It provides functionality to fetch TikTok video data, download videos, and extract audio from videos.
 Perfect for using in telegram bots/userbots
 
+> [!IMPORTANT]
+> **If tikwm.com is down, use [this version](https://github.com/damirTAG/TikTok-Module/tree/425fe20a8d522cf2051c9976c3e7ff76bdab6b5f).**
+> **Remember that search is NOT provided in this tree.**
+
 ## Features
 
 -   Fully async
