@@ -7,8 +7,9 @@ import shutil
 import warnings
 import functools
 
+from dataclasses import dataclass
 from urllib.parse import urljoin
-from typing import Union, Optional, Literal
+from typing import Union, Optional, Literal, List
 from tqdm import tqdm
 
 
@@ -24,6 +25,12 @@ def deprecated(reason: str = "This function is deprecated and may be removed in 
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+@dataclass
+class TikTokData:
+    dir_name: str
+    media: Union[str, List[str]]
+    type: str
 
 class TikTok:
     def __init__(self, host: Optional[str] = None):
@@ -47,7 +54,7 @@ class TikTok:
     async def close_session(self):
         await self.session.close()
 
-    async def init(self, link: Optional[str] = None):
+    async def init(self, link: Union[str] = None):
         self.link = link
         self.result = await self.fetch(link)
 
@@ -107,14 +114,13 @@ class TikTok:
     async def download_sound(self, audio_filename: Optional[str] = None):
         audio_filename = audio_filename or f"{self.result['music_info']['title']}.mp3"
         await self._download_file(self.result['music_info']['play'], audio_filename)
+        return audio_filename
 
     async def download(self, video_filename: Optional[str] = None, hd: bool = False):
         """
         Async function to download a TikTok video or a photo post.
 
-        This function can handle both video posts and photo posts. If the provided
-        TikTok link is a video, it will download the video. If the link is a photo
-        post, it will download all photos associated with the post.
+        This function can handle both video posts and photo posts
 
         Args:
             video_filename (Optional[str]): Name of the TikTok video file. If None,
@@ -125,7 +131,7 @@ class TikTok:
             str: The filename of the downloaded video or the directory containing photos.
 
         Raises:
-            Exception: If the download fails.
+            Exception
 
         Example usage:
 
@@ -136,12 +142,12 @@ class TikTok:
         async def main():
             tiktok = TikTok()
             await tiktok.init('https://www.tiktok.com/@adasf4v/video/7367017049136172320')
-            video_filename = await tiktok.download(hd=True)
+            dwnld_data = await tiktok.download(hd=True)
             # or
             await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-            photo_filename = await tiktok.download('tiktok images')
-            print(f"Downloaded to: {video_filename}")
-            print(f"Images downloaded to: {photo_filename}")
+            dwnld_data = await tiktok.download('tiktok images')
+            print(f"Downloaded to: {dwnld_data.dir_name}")
+            print(f"Images downloaded to: {dwnld_data.dir_name}")
             await tiktok.close_session()
 
         asyncio.run(main())
@@ -153,7 +159,13 @@ class TikTok:
             tasks = [self._download_file(url, os.path.join(download_dir, f'image_{i + 1}.jpg')) for i, url in enumerate(self.result['images'])]
             await asyncio.gather(*tasks)
             print(f"[TikTok:photos] | Downloaded and saved photos to {download_dir}")
-            return download_dir
+
+            tiktok_data = TikTokData(
+                dir_name=download_dir,
+                media=[os.path.join(download_dir, f'image_{i + 1}.jpg') for i in range(len(self.result['images']))],
+                type="images"
+            )
+            return tiktok_data
         elif 'hdplay' in self.result or 'play' in self.result:
             video_url = self.result['hdplay'] if hd else self.result['play']
             if video_filename is None:
@@ -167,7 +179,13 @@ class TikTok:
                         file.write(chunk)
                         pbar.update(len(chunk))
                 print(f"[TikTok:video] | Downloaded and saved as {video_filename}")
-                return video_filename
+                tiktok_data = TikTokData(
+                    dir_name=os.path.dirname(video_filename),
+                    media=video_filename,
+                    type="video"
+                )
+                
+                return tiktok_data
         else:
             raise Exception("No downloadable content found in the provided link.")
 
@@ -210,12 +228,12 @@ class TikTok:
 async def main():
     async with TikTok() as tiktok:
         await tiktok.init('https://www.tiktok.com/@adasf4v/video/7367017049136172320')
-        video_filename = await tiktok.download(hd=True)
-        print(f"Downloaded to: {video_filename}")
+        video_data = await tiktok.download(hd=True)
+        print(f"Downloaded to: {video_data.dir_name}")
         # or
         await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-        photo_filename = await tiktok.download('tiktok images')
-        print(f"Images downloaded to: {photo_filename}")
+        video_data = await tiktok.download('tiktok images')
+        print(f"Images downloaded to: {video_data.dir_name}")
         del tiktok
 
 # Run the example

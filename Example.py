@@ -16,7 +16,7 @@ async def main():
     # Example 2: Download photos
     try:
         await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-        photo_filenames = await tiktok.download('tiktok_images22')
+        photo_filenames = await tiktok.download('tiktok_images1')
         print(f"Images downloaded to: {photo_filenames}")
     except Exception as e:
         print(f"Error downloading photos: {e}")
