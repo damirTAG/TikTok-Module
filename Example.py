@@ -8,16 +8,16 @@ async def main():
     # Example 1: Download video
     try:
         await tiktok.init('https://www.tiktok.com/@p1lotless/video/7382314053496098053')
-        video_filename = await tiktok.download(hd=True)
-        print(f"Downloaded video to: {video_filename}")
+        video = await tiktok.download(hd=True)
+        print(f"Downloaded video: {video.media}")
     except Exception as e:
         print(f"Error downloading video: {e}")
 
     # Example 2: Download photos
     try:
         await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-        photo_filenames = await tiktok.download('tiktok_images1')
-        print(f"Images downloaded to: {photo_filenames}")
+        photo = await tiktok.download('tiktok_images1')
+        print(f"Images downloaded to: {photo.dir_name}")
     except Exception as e:
         print(f"Error downloading photos: {e}")
 
@@ -43,8 +43,6 @@ async def main():
 
     await tiktok.close_session()
     print("Session closed.")
-    # Cleanup
-    del tiktok
 
 if __name__ == "__main__":
     asyncio.run(main())

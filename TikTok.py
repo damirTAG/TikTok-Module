@@ -118,40 +118,38 @@ class TikTok:
 
     async def download(self, video_filename: Optional[str] = None, hd: bool = False):
         """
-        Async function to download a TikTok video or a photo post.
-
-        This function can handle both video posts and photo posts
+        Asynchronously downloads a TikTok video or photo post.
 
         Args:
-            video_filename (Optional[str]): Name of the TikTok video file. If None,
-                                                the file will be named based on the video ID.
-            hd (Optional[bool]): If True, downloads the video in HD format. Defaults to False.
+            video_filename (Optional[str]): The name of the file for the TikTok video or photo. If None, the file will be named based on the video or photo ID.
+            hd (bool): If True, downloads the video in HD format. Defaults to False.
 
         Returns:
-            str: The filename of the downloaded video or the directory containing photos.
+            dir_name (str): Directory name
+            media (Union[str, List[str]]): Full list of downloaded media
+            type (str): The type of downloaded objects: Images or video
 
         Raises:
-            Exception
+            Exception: If the download fails.
 
-        Example usage:
+        Code example:
+            ```python
+            import asyncio
+            from tiktok import TikTok
 
-        ```python
-        import asyncio
-        from tiktok import TikTok
+            async def main():
+                    tiktok = TikTok()
+                    await tiktok.init('https://www.tiktok.com/@adasf4v/video/7367017049136172320')
+                    video = await tiktok.download(hd=True)
+                    # or
+                    await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
+                    photo = await tiktok.download('tiktok_images')
+                    print(f"Downloaded video: {video.media}")
+                    print(f"Images downloaded to: {photo.dir_name}")
+                    await tiktok.close_session()
 
-        async def main():
-            tiktok = TikTok()
-            await tiktok.init('https://www.tiktok.com/@adasf4v/video/7367017049136172320')
-            dwnld_data = await tiktok.download(hd=True)
-            # or
-            await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-            dwnld_data = await tiktok.download('tiktok images')
-            print(f"Downloaded to: {dwnld_data.dir_name}")
-            print(f"Images downloaded to: {dwnld_data.dir_name}")
-            await tiktok.close_session()
-
-        asyncio.run(main())
-        ```
+            asyncio.run(main())
+            ```
         """
         if 'images' in self.result:
             download_dir = video_filename or self.result['id']
@@ -189,21 +187,56 @@ class TikTok:
         else:
             raise Exception("No downloadable content found in the provided link.")
 
-    def construct_caption_posts(self, desc_limit: Optional[int] = None) -> str:
-        aweme_id = self.result['id']
-        nickname = self.result['author']['nickname']
-        unique = self.result['author']['unique_id']
-        desc = (self.result['title'] or 'No title')[:desc_limit] + '...' if desc_limit and len(self.result['title']) > desc_limit else self.result['title']
-        video_link = f'https://www.tiktok.com/@{unique}/video/{aweme_id}'
-        uploader_link = f'https://www.tiktok.com/@{unique}'
-        return f"💬: <a href='{video_link}'>{desc}</a>\n\n👤: <a href='{uploader_link}'>{nickname}</a>"
+    def _get_video_link(self, unique_id: str, aweme_id: str) -> str:
+        return f'https://www.tiktok.com/@{unique_id}/video/{aweme_id}'
+    def _get_uploader_link(self, unique_id: str) -> str:
+        return f'https://www.tiktok.com/@{unique_id}'
 
-    def construct_caption_audio(self) -> str:
-        aweme_id = self.result['id']
-        unique = self.result['author']['unique_id']
-        video_link = f'https://www.tiktok.com/@{unique}/video/{aweme_id}'
-        audio_title = self.result['music_info']['title']
-        return f'💬: <a href="{video_link}"> {audio_title}</a>'
+    def construct_caption_posts(self, desc_limit: Optional[int] = None, desc_prefix: str = '💬:', desc_suffix: str = '', 
+                                uploader_prefix: str = '👤:', uploader_suffix: str = '') -> str:
+        """
+        Helpful stuff, like constructing captions for telegram bots, may be useful.
+        Uses markdown HTML.
+
+        Args:
+            desc_limit (Optional[int]): The maximum length of the description. If provided, the description will be truncated to this length.
+            desc_prefix (str): The prefix to add before the description link.
+            desc_suffix (str): The suffix to add after the description link.
+            uploader_prefix (str): The prefix to add before the uploader link.
+            uploader_suffix (str): The suffix to add after the uploader link.
+
+        Returns:
+            str: The formatted caption for the TikTok post.
+        """
+        aweme_id = self.result.get('id', 'N/A')
+        nickname = self.result.get('author', {}).get('nickname', 'Unknown')
+        unique_id = self.result.get('author', {}).get('unique_id', 'unknown_user')
+        title = self.result.get('title', 'No title')
+        desc = (title[:desc_limit] + '...') if desc_limit and len(title) > desc_limit else title
+        video_link = self._get_video_link(unique_id, aweme_id)
+        uploader_link = self._get_uploader_link(unique_id)
+
+        return (f"{desc_prefix} <a href='{video_link}'>{desc}</a>{desc_suffix}\n\n"
+                f"{uploader_prefix} <a href='{uploader_link}'>{nickname}</a>{uploader_suffix}")
+
+    def construct_caption_audio(self, audio_prefix: str = '💬:', audio_suffix: str = '') -> str:
+        """
+        Helpful stuff, like constructing captions for telegram bots, may be useful.
+        Uses markdown HTML.
+
+        Args:
+            audio_prefix (str): The prefix to add before the audio title link.
+            audio_suffix (str): The suffix to add after the audio title link.
+
+        Returns:
+            str: The formatted caption for the TikTok audio post.
+        """
+        aweme_id = self.result.get('id', 'N/A')
+        unique_id = self.result.get('author', {}).get('unique_id', 'unknown_user')
+        video_link = self._get_video_link(unique_id, aweme_id)
+        audio_title = self.result.get('music_info', {}).get('title', 'Unknown audio')
+
+        return f'{audio_prefix} <a href="{video_link}">{audio_title}</a>{audio_suffix}'
 
     def cleanup(self):
         if hasattr(self, 'download_dir') and os.path.exists(self.download_dir):
@@ -213,28 +246,12 @@ class TikTok:
         if hasattr(self, 'audio_filename') and os.path.exists(self.audio_filename):
             os.remove(self.audio_filename)
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close_session()
-        self.cleanup()
-
     def __del__(self):
         self.cleanup()
 
-
-# Example usage:
-async def main():
-    async with TikTok() as tiktok:
-        await tiktok.init('https://www.tiktok.com/@adasf4v/video/7367017049136172320')
-        video_data = await tiktok.download(hd=True)
-        print(f"Downloaded to: {video_data.dir_name}")
-        # or
-        await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-        video_data = await tiktok.download('tiktok images')
-        print(f"Images downloaded to: {video_data.dir_name}")
-        del tiktok
-
-# Run the example
-asyncio.run(main())
+"""
+Думаю, нас не догонят, нас, и нас не догонят, нас
+И они не слышат это, высоко, как NASA
+И я бегу, как Соник, быстрый, я Супер Соник
+Деньги опять звонят, они в моей зоне
+"""
