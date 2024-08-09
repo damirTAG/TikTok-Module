@@ -1,33 +1,12 @@
-import aiohttp
-import asyncio
-import re
-import os
-import platform
-import shutil
-import warnings
-import functools
+import aiohttp, asyncio, re, os, warnings, functools, logging
 
 from dataclasses import dataclass
 from urllib.parse import urljoin
 from typing import Union, Optional, Literal, List
 from tqdm import tqdm
 
-
-def deprecated(reason: str = "This function is deprecated and may be removed in future versions."):
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            warnings.warn(
-                f"{func.__name__} is deprecated: {reason}",
-                category=DeprecationWarning,
-                stacklevel=2
-            )
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
 @dataclass
-class TikTokData:
+class data:
     dir_name: str
     media: Union[str, List[str]]
     type: str
@@ -48,15 +27,71 @@ class TikTok:
         self.link = None
         self.result = None
 
-        if platform.system() == 'Windows':
-            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        self.logger = logging.getLogger('damirtag-TikTok')
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('[damirtag-TikTok:%(funcName)s]: %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
+
+    def _warn(reason: str = 'This function is NOT used but may be useful'):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                warnings.warn(
+                    f"Warning! Deprecated: {func.__name__}\nReason: {reason}",
+                    category=DeprecationWarning,
+                    stacklevel=2
+                )
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
 
     async def close_session(self):
         await self.session.close()
 
-    async def init(self, link: Union[str] = None):
-        self.link = link
-        self.result = await self.fetch(link)
+    async def _ensure_data(self, link: str):
+        try:
+            if self.result is None or self.link != link:
+                self.link = link
+                self.result = await self.fetch(link)
+                self.logger.info("Succesfully ensured data from the link")
+        except Exception as e:
+            self.logger.error(f'Error occured when tried to get data from tikwm: {e}')
+
+    async def __getimages(self, download_dir: Optional[str] = None):
+        download_dir = download_dir or self.result['id']
+        os.makedirs(download_dir, exist_ok=True)
+        tasks = [self._download_file(url, os.path.join(download_dir, f'image_{i + 1}.jpg')) for i, url in enumerate(self.result['images'])]
+        await asyncio.gather(*tasks)
+        self.logger.info(f"Images - Downloaded and saved photos to {download_dir}")
+
+        return data(
+            dir_name=download_dir,
+            media=[os.path.join(download_dir, f'image_{i + 1}.jpg') for i in range(len(self.result['images']))],
+            type="images"
+        )
+        
+
+    async def __getvideo(self, video_filename: Optional[str] = None, hd: bool = False):
+        video_url = self.result['hdplay'] if hd else self.result['play']
+        video_filename = video_filename or f"{self.result['id']}.mp4"
+
+        async with self.session.get(video_url) as response:
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
+            with open(video_filename, 'wb') as file, tqdm(total=total_size, unit='B', unit_scale=True, desc=video_filename) as pbar:
+                async for chunk in response.content.iter_any():
+                    file.write(chunk)
+                    pbar.update(len(chunk))
+
+        self.logger.info(f"Video - Downloaded and saved video as {video_filename}")
+
+        return data(
+            dir_name=os.path.dirname(video_filename),
+            media=video_filename,
+            type="video"
+        )
 
     async def _makerequest(self, endpoint: str, params: dict) -> dict:
         async with self.session.get(urljoin(self.host, endpoint), params=params, headers=self.headers) as response:
@@ -69,7 +104,7 @@ class TikTok:
         urls = re.findall(r'http[s]?://[^\s]+', text)
         return urls[0] if urls else None
 
-    @deprecated('This function is NOT used but may be useful')
+    @_warn()
     async def convert_share_urls(self, url: str) -> Optional[str]:
         url = self.get_url(url)
         if '@' in url:
@@ -79,7 +114,7 @@ class TikTok:
                 return response.headers['Location'].split('?')[0]
         return None
 
-    @deprecated('This function is NOT used but may be useful')
+    @_warn()
     async def get_tiktok_video_id(self, original_url: str) -> Optional[str]:
         original_url = await self.convert_share_urls(original_url)
         matches = re.findall(r'/video|v|photo/(\d+)', original_url)
@@ -91,10 +126,20 @@ class TikTok:
         return await self._makerequest(self.data_endpoint, params=params)
 
     async def search(self, method: Literal["keyword", "hashtag"], keyword: str, count: int = 10, cursor: int = 0) -> list:
+        self.logger.info(f"Searching for: {keyword}")
         params = {"keywords": keyword, "count": count, "cursor": cursor}
         endpoint = self.search_videos_keyword_endpoint if method == 'keyword' else self.search_videos_hashtag_endpoint
-        data = await self._makerequest(endpoint, params=params)
-        return data.get("videos", []) if method == 'keyword' else data.get("challenge_list", [])
+
+        try:
+            data = await self._makerequest(endpoint, params=params)
+            if data:
+                total_results_int = f"{len(data.get('videos'))} videos" if method == "keyword" else f"{len(data.get('challenge_list'))} hashtags"
+                self.logger.info(f"Found {total_results_int} for query: {keyword}")
+                return data.get("videos", []) if method == 'keyword' else data.get("challenge_list", [])
+            else:
+                raise Exception("Nothing found. Sorry, check params")
+        except Exception as e:
+            self.logger.error(f"Failed to search: {e}")    
 
     async def _download_file(self, url: str, path: str):
         async with self.session.get(url) as response:
@@ -103,20 +148,20 @@ class TikTok:
                 while chunk := await response.content.read(1024):
                     file.write(chunk)
 
-    @deprecated('You can use download() instead')
-    async def download_photos(self, download_dir: Optional[str] = None):
-        download_dir = download_dir or self.result['id']
-        os.makedirs(download_dir, exist_ok=True)
-        tasks = [self._download_file(url, os.path.join(download_dir, f'image_{i + 1}.jpg')) for i, url in enumerate(self.result['images'])]
-        await asyncio.gather(*tasks)
-        return download_dir
-
-    async def download_sound(self, audio_filename: Optional[str] = None):
-        audio_filename = audio_filename or f"{self.result['music_info']['title']}.mp3"
+    async def download_sound(self, link: Union[str], audio_filename: Optional[str] = None, 
+                         audio_ext: Optional[str] = ".mp3"):
+        await self._ensure_data(link)
+        
+        if not audio_filename:
+            audio_filename = f"{self.result['music_info']['title']}{audio_ext}"
+        else:
+            audio_filename += audio_ext
+        
         await self._download_file(self.result['music_info']['play'], audio_filename)
+        self.logger.info(f"Sound - Downloaded and saved sound as {audio_filename}")
         return audio_filename
 
-    async def download(self, video_filename: Optional[str] = None, hd: bool = False):
+    async def download(self, link: Union[str], video_filename: Optional[str] = None, hd: bool = False) -> str:
         """
         Asynchronously downloads a TikTok video or photo post.
 
@@ -130,7 +175,7 @@ class TikTok:
             type (str): The type of downloaded objects: Images or video
 
         Raises:
-            Exception: If the download fails.
+            Exception: No downloadable content found in the provided link.
 
         Code example:
             ```python
@@ -139,11 +184,9 @@ class TikTok:
 
             async def main():
                     tiktok = TikTok()
-                    await tiktok.init('https://www.tiktok.com/@adasf4v/video/7367017049136172320')
-                    video = await tiktok.download(hd=True)
+                    video = await tiktok.download("https://www.tiktok.com/@adasf4v/video/7367017049136172320", hd=True)
                     # or
-                    await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-                    photo = await tiktok.download('tiktok_images')
+                    photo = await tiktok.download('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232', 'tiktok_images')
                     print(f"Downloaded video: {video.media}")
                     print(f"Images downloaded to: {photo.dir_name}")
                     await tiktok.close_session()
@@ -151,40 +194,15 @@ class TikTok:
             asyncio.run(main())
             ```
         """
+        await self._ensure_data(link)
         if 'images' in self.result:
-            download_dir = video_filename or self.result['id']
-            os.makedirs(download_dir, exist_ok=True)
-            tasks = [self._download_file(url, os.path.join(download_dir, f'image_{i + 1}.jpg')) for i, url in enumerate(self.result['images'])]
-            await asyncio.gather(*tasks)
-            print(f"[TikTok:photos] | Downloaded and saved photos to {download_dir}")
-
-            tiktok_data = TikTokData(
-                dir_name=download_dir,
-                media=[os.path.join(download_dir, f'image_{i + 1}.jpg') for i in range(len(self.result['images']))],
-                type="images"
-            )
-            return tiktok_data
+            self.logger.info("Starting to download images")
+            return await self.__getimages(video_filename)
         elif 'hdplay' in self.result or 'play' in self.result:
-            video_url = self.result['hdplay'] if hd else self.result['play']
-            if video_filename is None:
-                video_filename = f"@damirtag сигмо {self.result['id']}.mp4"
-            
-            async with self.session.get(video_url) as response:
-                response.raise_for_status()  # Raise an error for bad status
-                total_size = int(response.headers.get('content-length', 0))
-                with open(video_filename, 'wb') as file, tqdm(total=total_size, unit='B', unit_scale=True, desc=video_filename) as pbar:
-                    async for chunk in response.content.iter_any():
-                        file.write(chunk)
-                        pbar.update(len(chunk))
-                print(f"[TikTok:video] | Downloaded and saved as {video_filename}")
-                tiktok_data = TikTokData(
-                    dir_name=os.path.dirname(video_filename),
-                    media=video_filename,
-                    type="video"
-                )
-                
-                return tiktok_data
+            self.logger.info("Starting to download video.")
+            return await self.__getvideo(video_filename, hd)
         else:
+            self.logger.error("No downloadable content found in the provided link.")
             raise Exception("No downloadable content found in the provided link.")
 
     def _get_video_link(self, unique_id: str, aweme_id: str) -> str:
@@ -237,21 +255,3 @@ class TikTok:
         audio_title = self.result.get('music_info', {}).get('title', 'Unknown audio')
 
         return f'{audio_prefix} <a href="{video_link}">{audio_title}</a>{audio_suffix}'
-
-    def cleanup(self):
-        if hasattr(self, 'download_dir') and os.path.exists(self.download_dir):
-            shutil.rmtree(self.download_dir)
-        if hasattr(self, 'video_filename') and os.path.exists(self.video_filename):
-            os.remove(self.video_filename)
-        if hasattr(self, 'audio_filename') and os.path.exists(self.audio_filename):
-            os.remove(self.audio_filename)
-
-    def __del__(self):
-        self.cleanup()
-
-"""
-Думаю, нас не догонят, нас, и нас не догонят, нас
-И они не слышат это, высоко, как NASA
-И я бегу, как Соник, быстрый, я Супер Соник
-Деньги опять звонят, они в моей зоне
-"""

@@ -7,17 +7,14 @@ async def main():
 
     # Example 1: Download video
     try:
-        await tiktok.init('https://www.tiktok.com/@p1lotless/video/7382314053496098053')
-        video = await tiktok.download(hd=True)
-        print(f"Downloaded video: {video.media}")
+        await tiktok.download('https://www.tiktok.com/@p1lotless/video/7382314053496098053', hd=True)
     except Exception as e:
         print(f"Error downloading video: {e}")
 
-    # Example 2: Download photos
+    # Example 2: Download photos and sound
     try:
-        await tiktok.init('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232')
-        photo = await tiktok.download('tiktok_images1')
-        print(f"Images downloaded to: {photo.dir_name}")
+        await tiktok.download('https://www.tiktok.com/@dx_r13/photo/7398188624526724358', 'example-data/tiktok_images1')
+        await tiktok.download_sound('https://www.tiktok.com/@dx_r13/photo/7398188624526724358', 'example-data/goofy ahh sound')
     except Exception as e:
         print(f"Error downloading photos: {e}")
 
@@ -25,7 +22,6 @@ async def main():
     try:
         keyword = 'funny'
         videos = await tiktok.search(method="keyword", keyword=keyword, count=5)
-        print(f"Found {len(videos)} videos for keyword '{keyword}':")
         for idx, video in enumerate(videos, start=1):
             print(f"{idx}. {video['title']}\n{video['play']}")
     except Exception as e:
@@ -35,7 +31,6 @@ async def main():
     try:
         hashtag = 'dance'
         challenges = await tiktok.search(method="hashtag", keyword=hashtag, count=5)
-        print(f"Found {len(challenges)} challenges for hashtag '{hashtag}':")
         for idx, challenge in enumerate(challenges, start=1):
             print(f"{idx}. #{challenge['cha_name']}\nUser count: {challenge['user_count']}\nView count: {challenge['view_count']}")
     except Exception as e:
