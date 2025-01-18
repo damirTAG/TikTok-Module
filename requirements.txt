@@ -1,4 +1,4 @@
 aiohttp==3.8.1
 asyncio==3.4.3
 tqdm==4.62.3
-tenacity==8.2.3
+ffmpeg-python

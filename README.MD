@@ -22,7 +22,7 @@ TikWM Free API limit: 5.000 requests per day for one IP adress.
 aiohttp==3.8.1
 asyncio==3.4.3
 tqdm==4.62.3
-tenacity==8.2.3
+ffmpeg-python
 ```
 
 ## Installation
@@ -33,7 +33,3 @@ https://raw.githubusercontent.com/damirTAG/TikTok-Module/main/TikTok.py
 ## How to use?
 
 [See the list of examples here](https://github.com/damirtag/tiktok-module/blob/main/Example.py)
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/damirtag/tiktok-module/blob/main/LICENSE.MD) file for details.

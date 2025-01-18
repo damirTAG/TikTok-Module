@@ -1,16 +1,39 @@
-import aiohttp
-import asyncio
-import re
-import os
-import logging
-from dataclasses import dataclass, field
-from typing import Union, Optional, Literal, List, Dict, Any
-from tqdm.asyncio import tqdm
+"""
+Author: https://github.com/damirTAG
+GH repo: https://github.com/damirTAG/TikTok-Module
+
+MIT License
+
+Copyright (c) 2024 Tagilbayev Damir
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+"""
+
+import aiohttp, asyncio
+import logging, os, re
 import ffmpeg
-from datetime import datetime
-import hashlib
-import json
-from pathlib import Path
+
+from dataclasses import dataclass, field
+from typing import Union, Optional, Literal, List, Dict
+from tqdm.asyncio import tqdm
+
 
 @dataclass
 class data:
@@ -269,44 +292,3 @@ class TikTok:
         else:
             self.logger.error("No downloadable content found in the provided link.")
             raise Exception("No downloadable content found in the provided link.")
-        
-
-
-async def main():
-    async with TikTok() as tt:
-        # Download video
-        result: data = await tt.download("https://vm.tiktok.com/ZMkHSh5t1/")
-        print(f"Downloaded: {result.media}")
-
-        # Download photo post and sound
-        result: data = await tt.download(
-            'https://www.tiktok.com/@dx_r13/photo/7398188624526724358', 
-            'example-data/tiktok_images1'
-            )
-        print(f'Downloaded photo post to: {result.dir_name}')
-        sound_filename = await tt.download_sound(
-            'https://www.tiktok.com/@dx_r13/photo/7398188624526724358', 
-            'example-data/goofy ahh sound'
-            )
-        print(f'Downloaded sound as: {sound_filename}')
-        
-        # Get tiktok post info (raw api response)
-        info = await tt.fetch("https://www.tiktok.com/messages?lang=ru-RU")
-        if info:
-            print(f"Video title: {info.data.get('title', 'No title')}")
-            print(f"Video duration: {info.data.get('duration', 0.0)}")
-            print(f"Video download link: {info.data.get('play', 'No video link')}")
-            print(f"Music download link: {info.data.get('music', 'No music link')}")
-        
-        # Search videos by keyword
-        result = await tt.search(
-                'keyword', 
-                'jojo 7',
-                count=5
-            )
-        if result:
-            for idx, video in enumerate(result, start=1):
-                print(f"{idx}. {video['title']}\n{video['play']}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
