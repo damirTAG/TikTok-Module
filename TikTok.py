@@ -1,15 +1,36 @@
-import aiohttp, asyncio, re, os, warnings, functools, logging
-
-from dataclasses import dataclass
-from urllib.parse import urljoin
-from typing import Union, Optional, Literal, List
-from tqdm import tqdm
+import aiohttp
+import asyncio
+import re
+import os
+import logging
+from dataclasses import dataclass, field
+from typing import Union, Optional, Literal, List, Dict, Any
+from tqdm.asyncio import tqdm
+import ffmpeg
+from datetime import datetime
+import hashlib
+import json
+from pathlib import Path
 
 @dataclass
 class data:
     dir_name: str
     media: Union[str, List[str]]
     type: str
+
+@dataclass
+class metadata(data):
+    metadata: Dict[str, Union[int, float]] = field(default_factory=dict)
+
+    @property
+    def height(self) -> Optional[int]:
+        return self.metadata.get('height')
+    @property
+    def width(self) -> Optional[int]:
+        return self.metadata.get('width')
+    @property
+    def duration(self) -> Optional[float]:
+        return self.metadata.get('duration')
 
 class TikTok:
     def __init__(self, host: Optional[str] = None):
@@ -18,51 +39,71 @@ class TikTok:
                           'Version/4.0.4 Mobile/7B334b Safari/531.21.10'
         }
         self.host = host or "https://www.tikwm.com/"
-        self.session = aiohttp.ClientSession()
+        self.session = None
 
         self.data_endpoint = "api"
         self.search_videos_keyword_endpoint = "api/feed/search"
         self.search_videos_hashtag_endpoint = "api/challenge/search"
 
-        self.link = None
+        self.logger = self._setup_logger()
         self.result = None
+        self.link = None
 
-        self.logger = logging.getLogger('damirtag-TikTok')
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            await self.session.close()
+
+    def _setup_logger(self):
+        logger = logging.getLogger('damirtag.TikTok')
         handler = logging.StreamHandler()
         formatter = logging.Formatter('[damirtag-TikTok:%(funcName)s]: %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        self.logger.setLevel(logging.INFO)
-
-    def _warn(reason: str = 'This function is NOT used but may be useful'):
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                warnings.warn(
-                    f"Warning! Deprecated: {func.__name__}\nReason: {reason}",
-                    category=DeprecationWarning,
-                    stacklevel=2
-                )
-                return func(*args, **kwargs)
-            return wrapper
-        return decorator
-
-    async def close_session(self):
-        await self.session.close()
+        if not logger.handlers:
+            logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        return logger
 
     async def _ensure_data(self, link: str):
-        try:
-            if self.result is None or self.link != link:
-                self.link = link
-                self.result = await self.fetch(link)
-                self.logger.info("Succesfully ensured data from the link")
-        except Exception as e:
-            self.logger.error(f'Error occured when tried to get data from tikwm: {e}')
+        if self.result is None or self.link != link:
+            self.link = link
+            self.result = await self.fetch(link)
+            self.logger.info("Successfully ensured data from the link")
 
-    async def __getimages(self, download_dir: Optional[str] = None):
+    async def _makerequest(self, endpoint: str, params: dict) -> dict:
+        async with self.session.get(
+                os.path.join(self.host, endpoint),
+                params=params, 
+                headers=self.headers
+            ) as response:
+            response.raise_for_status()
+            data = await response.json()
+            return data.get('data', {})
+
+    async def _download_file(self, url: str, path: str):
+        async with self.session.get(url) as response:
+            response.raise_for_status()
+            with open(path, 'wb') as file, tqdm(unit='B', unit_scale=True, desc=os.path.basename(path)) as pbar:
+                while chunk := await response.content.read(1024):
+                    file.write(chunk)
+                    pbar.update(len(chunk))
+
+    @staticmethod
+    def get_url(text: str) -> Optional[str]:
+        urls = re.findall(r'http[s]?://[^\s]+', text)
+        return urls[0] if urls else None
+
+    async def image(self, download_dir: Optional[str] = None):
         download_dir = download_dir or self.result['id']
         os.makedirs(download_dir, exist_ok=True)
-        tasks = [self._download_file(url, os.path.join(download_dir, f'image_{i + 1}.jpg')) for i, url in enumerate(self.result['images'])]
+        tasks = [
+            self._download_file(
+            url, 
+            os.path.join(download_dir, f'image_{i + 1}.jpg')) for i, url in enumerate(self.result['images'])
+            ]
         await asyncio.gather(*tasks)
         self.logger.info(f"Images - Downloaded and saved photos to {download_dir}")
 
@@ -71,11 +112,10 @@ class TikTok:
             media=[os.path.join(download_dir, f'image_{i + 1}.jpg') for i in range(len(self.result['images']))],
             type="images"
         )
-        
 
-    async def __getvideo(self, video_filename: Optional[str] = None, hd: bool = False):
+    async def video(self, video_filename: Optional[str] = None, hd: bool = False):
         video_url = self.result['hdplay'] if hd else self.result['play']
-        video_filename = video_filename or f"{self.result['id']}.mp4"
+        video_filename = video_filename or f"Greetings from @damirtag {self.result['id']}.mp4"
 
         async with self.session.get(video_url) as response:
             response.raise_for_status()
@@ -87,45 +127,71 @@ class TikTok:
 
         self.logger.info(f"Video - Downloaded and saved video as {video_filename}")
 
-        return data(
+        # Extract metadata (duration from API, width and height from ffmpeg)
+        duration = self.result.get('duration', 0.0)  # Provided by the API
+        width, height = self._get_video_dimensions(video_filename)
+
+        return metadata(
             dir_name=os.path.dirname(video_filename),
             media=video_filename,
-            type="video"
+            type="video",
+            metadata={
+                'duration': duration,
+                'width': width,
+                'height': height
+            }
         )
 
-    async def _makerequest(self, endpoint: str, params: dict) -> dict:
-        async with self.session.get(urljoin(self.host, endpoint), params=params, headers=self.headers) as response:
-            response.raise_for_status()
-            data = await response.json()
-            return data.get('data', {})
-
-    @staticmethod
-    def get_url(text: str) -> Optional[str]:
-        urls = re.findall(r'http[s]?://[^\s]+', text)
-        return urls[0] if urls else None
-
-    @_warn()
-    async def convert_share_urls(self, url: str) -> Optional[str]:
-        url = self.get_url(url)
-        if '@' in url:
-            return url
-        async with self.session.get(url, headers=self.headers, allow_redirects=False) as response:
-            if response.status == 301:
-                return response.headers['Location'].split('?')[0]
-        return None
-
-    @_warn()
-    async def get_tiktok_video_id(self, original_url: str) -> Optional[str]:
-        original_url = await self.convert_share_urls(original_url)
-        matches = re.findall(r'/video|v|photo/(\d+)', original_url)
-        return matches[0] if matches else None
-
+    def _get_video_dimensions(self, video_file: str):
+        """Extract width and height using ffmpeg."""
+        try:
+            probe = ffmpeg.probe(video_file)
+            video_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'video']
+            if video_streams:
+                width = video_streams[0]['width']
+                height = video_streams[0]['height']
+                return width, height
+            else:
+                self.logger.error(f"No video streams found in {video_file}")
+                return None, None
+        except Exception as e:
+            self.logger.error(f"Error while extracting video dimensions with ffmpeg: {e}")
+            return None, None
+        
     async def fetch(self, link: str) -> dict:
+        """
+        Get tiktok post info (raw api response).
+
+        :param: link(str) = Tiktok video url
+        """
         url = self.get_url(link)
         params = {"url": url, "hd": 1}
         return await self._makerequest(self.data_endpoint, params=params)
 
     async def search(self, method: Literal["keyword", "hashtag"], keyword: str, count: int = 10, cursor: int = 0) -> list:
+        """
+        Search videos by keyword (default search) or hashtag
+
+        Args:
+            method (Literal["keyword", "hashtag"]): The search method. Choose between 'keyword' for general video search or 'hashtag' for hashtag-based search.
+            keyword (str): The keyword or hashtag to search for. For 'keyword', it can be a phrase or any string. For 'hashtag', prefix with `#` (e.g., '#funny').
+            count (int, optional): The number of search results to return. Default is 10.
+            cursor (int, optional): The cursor for pagination. Used to fetch subsequent pages of results. Default is 0.
+
+        Returns:
+            list: A list of search results returned by the TikTok API.
+            Each entry in the list contains metadata for individual videos or hashtags.
+
+            Example response to see: 
+                https://tikwm.com/api/feed/search?keywords=jojo7&count=10&cursor=10
+
+        Example:
+            If you're searching for videos related to "jojo7" with 10 results:
+                result = await search(method="keyword", keyword="jojo7", count=10, cursor=0)
+
+            If you're searching for a specific hashtag like "#funny" with 5 results:
+                result = await search(method="hashtag", keyword="funny", count=5, cursor=0)
+        """
         self.logger.info(f"Searching for: {keyword}")
         params = {"keywords": keyword, "count": count, "cursor": cursor}
         endpoint = self.search_videos_keyword_endpoint if method == 'keyword' else self.search_videos_hashtag_endpoint
@@ -141,15 +207,12 @@ class TikTok:
         except Exception as e:
             self.logger.error(f"Failed to search: {e}")    
 
-    async def _download_file(self, url: str, path: str):
-        async with self.session.get(url) as response:
-            response.raise_for_status()
-            with open(path, 'wb') as file:
-                while chunk := await response.content.read(1024):
-                    file.write(chunk)
-
-    async def download_sound(self, link: Union[str], audio_filename: Optional[str] = None, 
-                         audio_ext: Optional[str] = ".mp3"):
+    async def download_sound(
+            self, 
+            link: Union[str], 
+            audio_filename: Optional[str] = None, 
+            audio_ext: Optional[str] = ".mp3"
+        ):
         await self._ensure_data(link)
         
         if not audio_filename:
@@ -168,11 +231,13 @@ class TikTok:
         Args:
             video_filename (Optional[str]): The name of the file for the TikTok video or photo. If None, the file will be named based on the video or photo ID.
             hd (bool): If True, downloads the video in HD format. Defaults to False.
+            metadata (bool): if True, returns duration, width and height (only for videos)
 
         Returns:
-            dir_name (str): Directory name
-            media (Union[str, List[str]]): Full list of downloaded media
-            type (str): The type of downloaded objects: Images or video
+            dir_name (Union[str]): Directory name.
+            media (List[str]): Full list of downloaded media.
+            type (str): The type of downloaded objects: Images or video.
+            metadata (dict): {'duration': 13, 'width': 576, 'height': 1024}
 
         Raises:
             Exception: No downloadable content found in the provided link.
@@ -183,7 +248,7 @@ class TikTok:
             from tiktok import TikTok
 
             async def main():
-                    tiktok = TikTok()
+                async with TikTok() as tt:
                     video = await tiktok.download("https://www.tiktok.com/@adasf4v/video/7367017049136172320", hd=True)
                     # or
                     photo = await tiktok.download('https://www.tiktok.com/@arcadiabayalpha/photo/7375880582473043232', 'tiktok_images')
@@ -197,61 +262,51 @@ class TikTok:
         await self._ensure_data(link)
         if 'images' in self.result:
             self.logger.info("Starting to download images")
-            return await self.__getimages(video_filename)
+            return await self.image(video_filename)
         elif 'hdplay' in self.result or 'play' in self.result:
             self.logger.info("Starting to download video.")
-            return await self.__getvideo(video_filename, hd)
+            return await self.video(video_filename, hd)
         else:
             self.logger.error("No downloadable content found in the provided link.")
             raise Exception("No downloadable content found in the provided link.")
+        
 
-    def _get_video_link(self, unique_id: str, aweme_id: str) -> str:
-        return f'https://www.tiktok.com/@{unique_id}/video/{aweme_id}'
-    def _get_uploader_link(self, unique_id: str) -> str:
-        return f'https://www.tiktok.com/@{unique_id}'
 
-    def construct_caption_posts(self, desc_limit: Optional[int] = None, desc_prefix: str = '💬:', desc_suffix: str = '', 
-                                uploader_prefix: str = '👤:', uploader_suffix: str = '') -> str:
-        """
-        Helpful stuff, like constructing captions for telegram bots, may be useful.
-        Uses markdown HTML.
+async def main():
+    async with TikTok() as tt:
+        # Download video
+        result: data = await tt.download("https://vm.tiktok.com/ZMkHSh5t1/")
+        print(f"Downloaded: {result.media}")
 
-        Args:
-            desc_limit (Optional[int]): The maximum length of the description. If provided, the description will be truncated to this length.
-            desc_prefix (str): The prefix to add before the description link.
-            desc_suffix (str): The suffix to add after the description link.
-            uploader_prefix (str): The prefix to add before the uploader link.
-            uploader_suffix (str): The suffix to add after the uploader link.
+        # Download photo post and sound
+        result: data = await tt.download(
+            'https://www.tiktok.com/@dx_r13/photo/7398188624526724358', 
+            'example-data/tiktok_images1'
+            )
+        print(f'Downloaded photo post to: {result.dir_name}')
+        sound_filename = await tt.download_sound(
+            'https://www.tiktok.com/@dx_r13/photo/7398188624526724358', 
+            'example-data/goofy ahh sound'
+            )
+        print(f'Downloaded sound as: {sound_filename}')
+        
+        # Get tiktok post info (raw api response)
+        info = await tt.fetch("https://www.tiktok.com/messages?lang=ru-RU")
+        if info:
+            print(f"Video title: {info.data.get('title', 'No title')}")
+            print(f"Video duration: {info.data.get('duration', 0.0)}")
+            print(f"Video download link: {info.data.get('play', 'No video link')}")
+            print(f"Music download link: {info.data.get('music', 'No music link')}")
+        
+        # Search videos by keyword
+        result = await tt.search(
+                'keyword', 
+                'jojo 7',
+                count=5
+            )
+        if result:
+            for idx, video in enumerate(result, start=1):
+                print(f"{idx}. {video['title']}\n{video['play']}")
 
-        Returns:
-            str: The formatted caption for the TikTok post.
-        """
-        aweme_id = self.result.get('id', 'N/A')
-        nickname = self.result.get('author', {}).get('nickname', 'Unknown')
-        unique_id = self.result.get('author', {}).get('unique_id', 'unknown_user')
-        title = self.result.get('title', 'No title')
-        desc = (title[:desc_limit] + '...') if desc_limit and len(title) > desc_limit else title
-        video_link = self._get_video_link(unique_id, aweme_id)
-        uploader_link = self._get_uploader_link(unique_id)
-
-        return (f"{desc_prefix} <a href='{video_link}'>{desc}</a>{desc_suffix}\n\n"
-                f"{uploader_prefix} <a href='{uploader_link}'>{nickname}</a>{uploader_suffix}")
-
-    def construct_caption_audio(self, audio_prefix: str = '💬:', audio_suffix: str = '') -> str:
-        """
-        Helpful stuff, like constructing captions for telegram bots, may be useful.
-        Uses markdown HTML.
-
-        Args:
-            audio_prefix (str): The prefix to add before the audio title link.
-            audio_suffix (str): The suffix to add after the audio title link.
-
-        Returns:
-            str: The formatted caption for the TikTok audio post.
-        """
-        aweme_id = self.result.get('id', 'N/A')
-        unique_id = self.result.get('author', {}).get('unique_id', 'unknown_user')
-        video_link = self._get_video_link(unique_id, aweme_id)
-        audio_title = self.result.get('music_info', {}).get('title', 'Unknown audio')
-
-        return f'{audio_prefix} <a href="{video_link}">{audio_title}</a>{audio_suffix}'
+if __name__ == "__main__":
+    asyncio.run(main())
