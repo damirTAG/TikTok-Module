@@ -124,15 +124,26 @@ class TikTok:
         os.makedirs(download_dir, exist_ok=True)
         tasks = [
             self._download_file(
-            url, 
-            os.path.join(download_dir, f'image_{i + 1}.jpg')) for i, url in enumerate(self.result['images'])
+                    url, 
+                    os.path.join(
+                        download_dir, 
+                        f'image_{i + 1}.jpg'
+                    )
+                )
+                for i, url in enumerate(self.result['images'])
             ]
         await asyncio.gather(*tasks)
         self.logger.info(f"Images - Downloaded and saved photos to {download_dir}")
 
         return data(
             dir_name=download_dir,
-            media=[os.path.join(download_dir, f'image_{i + 1}.jpg') for i in range(len(self.result['images']))],
+            media=[
+                    os.path.join(
+                        download_dir, 
+                        f'image_{i + 1}.jpg'
+                    ) 
+                    for i in range(len(self.result['images']))
+                ],
             type="images"
         )
 
@@ -143,7 +154,12 @@ class TikTok:
         async with self.session.get(video_url) as response:
             response.raise_for_status()
             total_size = int(response.headers.get('content-length', 0))
-            with open(video_filename, 'wb') as file, tqdm(total=total_size, unit='B', unit_scale=True, desc=video_filename) as pbar:
+            with open(video_filename, 'wb') as file, tqdm(
+                    total=total_size, 
+                    unit='B', 
+                    unit_scale=True, 
+                    desc=video_filename
+                ) as pbar:
                 async for chunk in response.content.iter_any():
                     file.write(chunk)
                     pbar.update(len(chunk))
@@ -191,7 +207,13 @@ class TikTok:
         params = {"url": url, "hd": 1}
         return await self._makerequest(self.data_endpoint, params=params)
 
-    async def search(self, method: Literal["keyword", "hashtag"], keyword: str, count: int = 10, cursor: int = 0) -> list:
+    async def search(
+            self, 
+            method: Literal["keyword", "hashtag"], 
+            keyword: str, 
+            count: int = 10, 
+            cursor: int = 0
+            ) -> list:
         """
         Search videos by keyword (default search) or hashtag
 
@@ -217,12 +239,20 @@ class TikTok:
         """
         self.logger.info(f"Searching for: {keyword}")
         params = {"keywords": keyword, "count": count, "cursor": cursor}
-        endpoint = self.search_videos_keyword_endpoint if method == 'keyword' else self.search_videos_hashtag_endpoint
+        endpoint = (
+            self.search_videos_keyword_endpoint 
+            if method == 'keyword' 
+            else self.search_videos_hashtag_endpoint
+            )
 
         try:
             data = await self._makerequest(endpoint, params=params)
             if data:
-                total_results_int = f"{len(data.get('videos'))} videos" if method == "keyword" else f"{len(data.get('challenge_list'))} hashtags"
+                total_results_int = (
+                    f"{len(data.get('videos'))} videos" 
+                    if method == "keyword" 
+                    else f"{len(data.get('challenge_list'))} hashtags"
+                    )
                 self.logger.info(f"Found {total_results_int} for query: {keyword}")
                 return data.get("videos", []) if method == 'keyword' else data.get("challenge_list", [])
             else:
@@ -247,7 +277,12 @@ class TikTok:
         self.logger.info(f"Sound - Downloaded and saved sound as {audio_filename}")
         return audio_filename
 
-    async def download(self, link: Union[str], video_filename: Optional[str] = None, hd: bool = False) -> str:
+    async def download(
+            self, 
+            link: Union[str], 
+            video_filename: Optional[str] = None, 
+            hd: bool = False
+            ) -> str:
         """
         Asynchronously downloads a TikTok video or photo post.
 
@@ -265,7 +300,7 @@ class TikTok:
         Raises:
             Exception: No downloadable content found in the provided link.
 
-        Code example:
+        Base usage code example:
             ```python
             import asyncio
             from tiktok import TikTok
@@ -280,6 +315,112 @@ class TikTok:
                     await tiktok.close_session()
 
             asyncio.run(main())
+            ```
+        
+        Telethon usage code example:
+            ```python
+            from telethon import TelegramClient, events
+            from tiktok import TikTok
+
+            # Initialize your Telegram client
+            api_id = 'your_api_id'
+            api_hash = 'your_api_hash'
+            bot_token = 'your_bot_token'
+
+            client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
+            tiktok = TikTok()
+
+            @client.on(events.NewMessage(pattern='/tiktok'))
+            async def handle_tiktok_command(event):
+                try:
+                    # Get TikTok link from message
+                    tiktok_link = event.text.split()[1]
+                    
+                    # Download the TikTok content
+                    result = await tiktok.download(tiktok_link, hd=True)
+                    
+                    # Send the downloaded content
+                    if result.type == 'video':
+                        await client.send_file(
+                            event.chat_id,
+                            result.media[0],
+                            caption=f"Downloaded from: {tiktok_link}"
+                        )
+                    else:  # Photos
+                        for photo in result.media:
+                            await client.send_file(
+                                event.chat_id,
+                                photo,
+                                caption=f"Downloaded from: {tiktok_link}"
+                            )
+                            
+                except Exception as e:
+                    await event.reply(f"Error downloading TikTok content: {str(e)}")
+
+            # Run the client
+            client.run_until_disconnected()
+            ```
+
+        Aiogram usage code example:
+            ```python
+            from aiogram import Bot, Dispatcher, types
+            from aiogram.filters.command import Command
+            from tiktok import TikTok
+            import asyncio
+
+            # Initialize bot and dispatcher
+            bot = Bot(token='your_bot_token')
+            dp = Dispatcher()
+            tiktok = TikTok()
+
+            @dp.message(Command('tiktok'))
+            async def handle_tiktok_command(message: types.Message):
+                try:
+                    # Get TikTok link from message
+                    command_parts = message.text.split()
+                    if len(command_parts) != 2:
+                        await message.reply("Please provide a TikTok link after the command")
+                        return
+                        
+                    tiktok_link = command_parts[1]
+                    
+                    # Send "processing" message
+                    processing_msg = await message.reply("Downloading TikTok content...")
+                    
+                    # Download the TikTok content
+                    result = await tiktok.download(tiktok_link, hd=True)
+                    
+                    # Send the downloaded content
+                    if result.type == 'video':
+                        await message.reply_video(
+                            video=types.FSInputFile(result.media[0]),
+                            caption=f"Downloaded from: {tiktok_link}"
+                        )
+                    else:  # Photos
+                        media_group = []
+                        for photo in result.media:
+                            media_group.append(
+                                types.InputMediaPhoto(
+                                    media=types.FSInputFile(photo)
+                                )
+                            )
+                        # Set caption for the first photo
+                        if media_group:
+                            media_group[0].caption = f"Downloaded from: {tiktok_link}"
+                        
+                        await message.reply_media_group(media=media_group)
+                    
+                    # Delete processing message
+                    await processing_msg.delete()
+                    
+                except Exception as e:
+                    await message.reply(f"Error downloading TikTok content: {str(e)}")
+
+            async def main():
+                await dp.start_polling(bot)
+
+            if __name__ == '__main__':
+                asyncio.run(main())
             ```
         """
         await self._ensure_data(link)
