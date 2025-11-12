@@ -67,15 +67,14 @@ async def handle_tiktok_command(event):
                 caption=f"Downloaded from: {tiktok_link}"
             )
         else:  # Photos
-            for photo in result.media:
-                await client.send_file(
-                    event.chat_id,
-                    result.media,
-                    caption=f"Downloaded from: {tiktok_link}",
-                    reply_to=event.message.id,
-                    force_document=False,
-                    allow_cache=False
-                )
+            await client.send_file(
+                event.chat_id,
+                result.media,
+                caption=f"Downloaded from: {tiktok_link}",
+                reply_to=event.message.id,
+                force_document=False,
+                allow_cache=False
+            )
 
     except Exception as e:
         await event.reply(f"Error downloading TikTok content: {str(e)}")
